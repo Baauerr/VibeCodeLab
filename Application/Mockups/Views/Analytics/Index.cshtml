@@ -1,0 +1,226 @@
+@model Mockups.Models.Analytics.AnalyticsSummaryViewModel
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Аналитика</h2>
+    <div>
+        <a class="btn btn-outline-secondary me-2" href="/analytics/summary" target="_blank">JSON</a>
+        <button id="refreshBtn" class="btn btn-primary">Обновить</button>
+    </div>
+</div>
+
+<div id="analyticsError" class="alert alert-danger d-none" role="alert"></div>
+
+<style>
+    .stat-number { font-size: 2.2rem; font-weight: 700; }
+    .stat-icon { font-size: 1.6rem; opacity: .85; }
+    .card-small { min-height: 130px; }
+</style>
+
+<div class="row g-3">
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                <i class="fas fa-users stat-icon text-primary mb-2"></i>
+                <h5 class="card-title">Пользователи</h5>
+                <p id="usersCount" class="stat-number mb-0">@Model.UsersCount</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                <i class="fas fa-utensils stat-icon text-warning mb-2"></i>
+                <h5 class="card-title">Блюда</h5>
+                <p id="menuItemsCount" class="stat-number mb-0">@Model.MenuItemsCount</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                <i class="fas fa-receipt stat-icon text-success mb-2"></i>
+                <h5 class="card-title">Заказы</h5>
+                <p id="ordersCount" class="stat-number mb-0">@Model.OrdersCount</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                <i class="fas fa-map-marker-alt stat-icon text-danger mb-2"></i>
+                <h5 class="card-title">Адреса</h5>
+                <p id="addressesCount" class="stat-number mb-0">@Model.AddressesCount</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                <i class="fas fa-shopping-cart stat-icon text-info mb-2"></i>
+                <h5 class="card-title">Активные корзины</h5>
+                <p id="activeCartsCount" class="stat-number mb-0">@Model.ActiveCartsCount</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                <i class="fas fa-wallet stat-icon text-secondary mb-2"></i>
+                <h5 class="card-title">Средний чек</h5>
+                <p id="avgOrderValue" class="stat-number mb-0">@Model.AverageOrderValue</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-12 col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Обновлено</h6>
+                <p id="generatedAt" class="mb-0">@Model.GeneratedAt.ToLocalTime().ToString("f")</p>
+            </div>
+        </div>
+    </div>
+</div>
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const errDiv = document.getElementById('analyticsError');
+            function showError(msg) { if (errDiv) { errDiv.textContent = msg; errDiv.classList.remove('d-none'); } }
+            function hideError() { if (errDiv) { errDiv.textContent = ''; errDiv.classList.add('d-none'); } }
+
+            function animateValue(id, start, end, duration) {
+                const obj = document.getElementById(id);
+                if (!obj) return;
+                const range = end - start;
+                if (range === 0) { obj.textContent = end.toLocaleString(); return; }
+                const stepTime = Math.abs(Math.floor(duration / Math.abs(range))) || 20;
+                let current = start;
+                const increment = end > start ? 1 : -1;
+                const timer = setInterval(function () {
+                    current += increment;
+                    obj.textContent = current.toLocaleString();
+                    if (current == end) clearInterval(timer);
+                }, stepTime);
+            }
+
+            async function refreshAnalytics() {
+                try {
+                    const res = await fetch('/analytics/summary');
+                    if (!res.ok) throw new Error('Network error');
+                    const data = await res.json();
+
+                    animateValue('usersCount', parseInt(document.getElementById('usersCount').textContent || 0), data.usersCount, 600);
+                    animateValue('menuItemsCount', parseInt(document.getElementById('menuItemsCount').textContent || 0), data.menuItemsCount, 600);
+                    animateValue('ordersCount', parseInt(document.getElementById('ordersCount').textContent || 0), data.ordersCount, 600);
+                    animateValue('addressesCount', parseInt(document.getElementById('addressesCount').textContent || 0), data.addressesCount, 600);
+                    animateValue('activeCartsCount', parseInt(document.getElementById('activeCartsCount').textContent || 0), data.activeCartsCount, 600);
+                    document.getElementById('avgOrderValue').textContent = Number(data.averageOrderValue).toFixed(2);
+                    document.getElementById('generatedAt').textContent = new Date(data.generatedAt).toLocaleString();
+
+                    hideError();
+                    await loadCharts();
+                    await loadInsights();
+                } catch (e) {
+                    console.error(e);
+                    showError('Не удалось получить аналитику. Подробности в консоли.');
+                }
+            }
+
+            async function loadCharts() {
+                try {
+                    const res = await fetch('/analytics/details');
+                    if (!res.ok) throw new Error('Network error');
+                    const details = await res.json();
+
+                    const ctxOrders = document.getElementById('ordersChart').getContext('2d');
+                    const ctxRevenue = document.getElementById('revenueChart').getContext('2d');
+
+                    if (window._ordersChart) window._ordersChart.destroy();
+                    if (window._revenueChart) window._revenueChart.destroy();
+
+                    window._ordersChart = new Chart(ctxOrders, {
+                        type: 'bar',
+                        data: { labels: details.dates, datasets: [{ label: 'Orders', data: details.ordersCount, backgroundColor: '#0d6efd' }] },
+                        options: { responsive: true }
+                    });
+
+                    window._revenueChart = new Chart(ctxRevenue, {
+                        type: 'line',
+                        data: { labels: details.dates, datasets: [{ label: 'Revenue', data: details.revenue, borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.1)', fill: true }] },
+                        options: { responsive: true }
+                    });
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            async function loadInsights() {
+                try {
+                    const res = await fetch('/analytics/insights');
+                    if (!res.ok) throw new Error('Network error');
+                    const d = await res.json();
+
+                    const ctxHours = document.getElementById('hoursChart').getContext('2d');
+                    if (window._hoursChart) window._hoursChart.destroy();
+                    window._hoursChart = new Chart(ctxHours, {
+                        type: 'bar',
+                        data: { labels: Array.from({ length: 24 }, (_, i) => i), datasets: [{ label: 'Orders per hour', data: d.hours, backgroundColor: '#6f42c1' }] },
+                        options: { responsive: true }
+                    });
+
+                    const list = document.getElementById('topItems');
+                    list.innerHTML = '';
+                    (d.top || []).forEach((t, idx) => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        li.innerHTML = `<div><strong>${idx + 1}.</strong> ${t.name}</div><span class="badge bg-primary rounded-pill">${t.quantity}</span>`;
+                        list.appendChild(li);
+                    });
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            document.getElementById('refreshBtn').addEventListener('click', function () { refreshAnalytics(); });
+            refreshAnalytics();
+        });
+    </script>
+}
+
+<div class="row mt-4">
+    <div class="col-12 col-lg-6 mb-3">
+        <div class="card p-3 shadow-sm">
+            <h6>Заказы за неделю</h6>
+            <canvas id="ordersChart" height="150"></canvas>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6 mb-3">
+        <div class="card p-3 shadow-sm">
+            <h6>Выручка за неделю</h6>
+            <canvas id="revenueChart" height="150"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12 col-lg-8 mb-3">
+        <div class="card p-3 shadow-sm">
+            <h6>Распределение заказов по часам (последние 7 дней)</h6>
+            <canvas id="hoursChart" height="100"></canvas>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4 mb-3">
+        <div class="card p-3 shadow-sm">
+            <h6>Топ-5 товаров (за 7 дней)</h6>
+            <ul id="topItems" class="list-group list-group-flush mt-2">
+                <!-- populated dynamically -->
+            </ul>
+        </div>
+    </div>
+</div>
