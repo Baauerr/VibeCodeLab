@@ -14,6 +14,34 @@ namespace Mockups.Services.Orders
 {
     public class OrdersService : IOrdersService
     {
+        private static bool IsBirthdayWithinDays(
+            DateTime birthDate,
+            DateTime now,
+            int toleranceDays = 3
+        )
+        {
+            try
+            {
+                var thisYear = new DateTime(now.Year, birthDate.Month, birthDate.Day);
+                if (Math.Abs((thisYear - now).TotalDays) <= toleranceDays)
+                    return true;
+
+                var prev = thisYear.AddYears(-1);
+                if (Math.Abs((prev - now).TotalDays) <= toleranceDays)
+                    return true;
+
+                var next = thisYear.AddYears(1);
+                if (Math.Abs((next - now).TotalDays) <= toleranceDays)
+                    return true;
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private readonly OrdersRepository _ordersRepository;
         private readonly ICartsService _cartsService;
         private readonly IUsersService _usersService;
@@ -46,28 +74,29 @@ namespace Mockups.Services.Orders
             var price = 0f;
             foreach (var item in cartItems)
             {
-                var itemPrice =
-                    (await _menuItemsService.GetItemModelById(item.Id.ToString())).Price
-                    * item.Amount;
-                price += itemPrice;
+                if (item == null)
+                    continue;
+
+                var itemModel = await _menuItemsService.GetItemModelById(item.Id.ToString());
+                if (itemModel == null)
+                {
+                    throw new KeyNotFoundException($"Menu item with id = {item.Id} not found.");
+                }
+
+                price += itemModel.Price * item.Amount;
             }
 
             var discount = 0f;
-            var discountDescription = "";
 
             var userDOB = (await _usersService.GetUserInfo(userId)).BirthDate;
             var now = DateTime.Now;
-            userDOB.AddYears(now.Year - userDOB.Year);
-            if (Math.Abs((now - userDOB).Days) <= 3) //compare dates
+            if (IsBirthdayWithinDays(userDOB, now, 3)) //compare dates
             {
                 discount = 15f;
-                discountDescription =
-                    "На ваш заказ предоставляется скидка 15% в честь дня рождения!";
             }
             else if (now.Hour >= 11 && now.Hour < 15) //order time
             {
                 discount = 10f;
-                discountDescription = "На ваш заказ предоставляется скидка на ланч в 10%";
             }
 
             var order = new Order
@@ -155,14 +184,26 @@ namespace Mockups.Services.Orders
 
             var addresses = _addressesService.GetAddressesByUserId(userId);
             var addressStrings = new List<string>();
-            addressStrings.Add(
-                addresses.Where(a => a.IsMainAddress == true).First().GetAddressString()
-            );
-            foreach (var address in addresses)
+            if (addresses != null && addresses.Any())
             {
-                if (!addressStrings.Contains(address.GetAddressString()))
+                var main = addresses.FirstOrDefault(a => a.IsMainAddress);
+                if (main != null)
                 {
-                    addressStrings.Add(address.GetAddressString());
+                    addressStrings.Add(main.GetAddressString());
+                }
+                else
+                {
+                    // fallback to first address
+                    addressStrings.Add(addresses.First().GetAddressString());
+                }
+
+                foreach (var address in addresses)
+                {
+                    var s = address.GetAddressString();
+                    if (!addressStrings.Contains(s))
+                    {
+                        addressStrings.Add(s);
+                    }
                 }
             }
 
@@ -180,10 +221,16 @@ namespace Mockups.Services.Orders
             var price = 0f;
             foreach (var item in cartItems)
             {
-                var itemPrice =
-                    (await _menuItemsService.GetItemModelById(item.Id.ToString())).Price
-                    * item.Amount;
-                price += itemPrice;
+                if (item == null)
+                    continue;
+
+                var itemModel = await _menuItemsService.GetItemModelById(item.Id.ToString());
+                if (itemModel == null)
+                {
+                    throw new KeyNotFoundException($"Menu item with id = {item.Id} not found.");
+                }
+
+                price += itemModel.Price * item.Amount;
             }
 
             var discount = 0f;
@@ -191,12 +238,7 @@ namespace Mockups.Services.Orders
 
             var userDOB = (await _usersService.GetUserInfo(userId)).BirthDate;
             var now = DateTime.Now;
-            userDOB = userDOB
-                .AddYears(now.Year - userDOB.Year)
-                .AddHours(now.Hour)
-                .AddMinutes(now.Minute)
-                .AddSeconds(now.Second + 1);
-            if (Math.Abs((now - userDOB).Days) <= 3) //compare dates
+            if (IsBirthdayWithinDays(userDOB, now, 3)) //compare dates
             {
                 discount = 15f;
                 discountDescription =

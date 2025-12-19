@@ -1,7 +1,7 @@
-﻿using Mockups.Models.Account;
+﻿using Microsoft.AspNetCore.Identity;
+using Mockups.Models.Account;
 using Mockups.Repositories.Addresses;
 using Mockups.Storage;
-using Microsoft.AspNetCore.Identity;
 
 namespace Mockups.Services.Addresses
 {
@@ -10,8 +10,7 @@ namespace Mockups.Services.Addresses
         private readonly UserManager<User> _userManager;
         private readonly AddressRepository _addressRepository;
 
-        public AddressesService(UserManager<User> userManager,
-                AddressRepository addressRepository)
+        public AddressesService(UserManager<User> userManager, AddressRepository addressRepository)
         {
             _userManager = userManager;
             _addressRepository = addressRepository;
@@ -19,6 +18,8 @@ namespace Mockups.Services.Addresses
 
         public async Task AddAddress(AddAddressViewModel model, Guid userId)
         {
+            if (model == null)
+                throw new ArgumentNullException(nameof(model));
             var user = await _userManager.FindByIdAsync(userId.ToString());
 
             if (user == null)
@@ -26,12 +27,9 @@ namespace Mockups.Services.Addresses
                 throw new UnauthorizedAccessException();
             }
 
-            bool isMain = model.IsMainAddress;
-
-            if (!model.IsMainAddress && !_addressRepository.GetAddressesByUserId(userId.ToString()).Any())
-            {
-                isMain = true;
-            }
+            bool isMain =
+                model.IsMainAddress
+                || !_addressRepository.GetAddressesByUserId(userId.ToString()).Any();
 
             var address = new Address
             {
@@ -43,10 +41,10 @@ namespace Mockups.Services.Addresses
                 EntranceNumber = model.EntranceNumber,
                 FlatNumber = model.FlatNumber,
                 IsMainAddress = isMain,
-                UserId = user.Id
+                UserId = user.Id,
             };
 
-            if (address.IsMainAddress && (await _addressRepository.UserHasMainAddressSet(user.Id)))
+            if (address.IsMainAddress && await _addressRepository.UserHasMainAddressSet(user.Id))
             {
                 await _addressRepository.ResetMainAddresses(user.Id);
             }
@@ -56,6 +54,8 @@ namespace Mockups.Services.Addresses
 
         public async Task EditAddress(EditAddressViewModel model)
         {
+            if (model == null)
+                throw new ArgumentNullException(nameof(model));
             var address = await _addressRepository.GetAddressById(model.Id);
             if (address == null)
             {
@@ -85,20 +85,20 @@ namespace Mockups.Services.Addresses
             {
                 throw new KeyNotFoundException("Address not found.");
             }
-            bool isMain = address.IsMainAddress;
-            Guid UserId = address.UserId;
+            bool wasMain = address.IsMainAddress;
+            var userId = address.UserId;
 
             await _addressRepository.DeleteAddress(address);
 
-            if (isMain && (await _addressRepository.UserHasAnyAddresses(UserId)))
+            if (wasMain && await _addressRepository.UserHasAnyAddresses(userId))
             {
-                await _addressRepository.SetFirstAddressAsMainForUser(address.UserId);
+                await _addressRepository.SetFirstAddressAsMainForUser(userId);
             }
         }
 
-        public async Task<AddressShortViewModel> GetAddressShortViewModel(Guid AddressId)
+        public async Task<AddressShortViewModel> GetAddressShortViewModel(Guid addressId)
         {
-            var address = await _addressRepository.GetAddressById(AddressId);
+            var address = await _addressRepository.GetAddressById(addressId);
 
             if (address == null)
             {
@@ -110,9 +110,8 @@ namespace Mockups.Services.Addresses
                 Id = address.Id,
                 Name = address.Name,
                 AddressString = address.GetAddressString(),
-                Note = address.Note
+                Note = address.Note,
             };
-
         }
 
         public async Task<EditAddressViewModel> GetEditAddressViewModel(Guid addressId)

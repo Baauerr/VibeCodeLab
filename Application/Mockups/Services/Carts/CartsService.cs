@@ -26,11 +26,7 @@ namespace Mockups.Services.Carts
             if (item == null)
                 throw new KeyNotFoundException();
 
-            var cartItem = new CartMenuItem
-            {
-                MenuItemId = item.Id,
-                Amount = amount
-            };
+            var cartItem = new CartMenuItem { MenuItemId = item.Id, Amount = amount };
 
             _cartsRepository.AddItemToCart(userId, cartItem);
         }
@@ -71,18 +67,18 @@ namespace Mockups.Services.Carts
 
                 var itemAmount = cart.Items.Where(x => x.MenuItemId == item.Id).First().Amount;
 
-                vm.Items.Add(new CartMenuItemViewModel
-                {
-                    Id = item.Id,
-                    Name = item.Name,
-                    Amount = itemAmount,
-                });
+                vm.Items.Add(
+                    new CartMenuItemViewModel
+                    {
+                        Id = item.Id,
+                        Name = item.Name,
+                        Amount = itemAmount,
+                    }
+                );
             }
 
             return vm;
         }
-
-
 
         //GetUsersCartForOrder
     }

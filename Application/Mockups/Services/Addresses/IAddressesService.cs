@@ -9,7 +9,7 @@ namespace Mockups.Services.Addresses
         Task EditAddress(EditAddressViewModel model);
         Task DeleteAddress(Guid addressId);
         Task<EditAddressViewModel> GetEditAddressViewModel(Guid addressId);
-        Task<AddressShortViewModel> GetAddressShortViewModel(Guid AddressId);
+        Task<AddressShortViewModel> GetAddressShortViewModel(Guid addressId);
         List<Address> GetAddressesByUserId(Guid userId);
     }
 }

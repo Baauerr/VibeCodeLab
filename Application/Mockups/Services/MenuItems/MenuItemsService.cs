@@ -1,8 +1,8 @@
-﻿using Mockups.Models.Menu;
-using Mockups.Storage;
+﻿using Mockups.Models.Cart;
+using Mockups.Models.Menu;
 using Mockups.Repositories.MenuItems;
-using Mockups.Models.Cart;
 using Mockups.Services.Carts;
+using Mockups.Storage;
 
 namespace Mockups.Services.MenuItems
 {
@@ -11,10 +11,19 @@ namespace Mockups.Services.MenuItems
         private readonly IWebHostEnvironment _environment;
         private readonly MenuItemRepository _menuItemRepository;
         private readonly ICartsService _cartsService;
-        
-        private static string[] AllowedExtensions { get; set; } = { "jpg", "jpeg", "png" };
 
-        public MenuItemsService(IWebHostEnvironment environment, MenuItemRepository menuItemRepository, ICartsService cartsService)
+        private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "jpg",
+            "jpeg",
+            "png",
+        };
+
+        public MenuItemsService(
+            IWebHostEnvironment environment,
+            MenuItemRepository menuItemRepository,
+            ICartsService cartsService
+        )
         {
             _environment = environment;
             _menuItemRepository = menuItemRepository;
@@ -26,25 +35,34 @@ namespace Mockups.Services.MenuItems
             var sameMenuItem = await _menuItemRepository.GetItemByName(model.Name);
             if (sameMenuItem != null)
             {
-                throw new ArgumentException($"Menu item with same name ({model.Name}) already exists");
+                throw new ArgumentException(
+                    $"Menu item with same name ({model.Name}) already exists"
+                );
             }
 
-            var isFileAttached = model.File != null;
             var fileNameWithPath = string.Empty;
-            if (isFileAttached)
+            if (model.File != null)
             {
-#pragma warning disable CS8602 // Dereference of a possibly null reference.
-                var extension = Path.GetExtension(model.File.FileName).Replace(".", "");
-#pragma warning restore CS8602 // Dereference of a possibly null reference.
+                var rawFileName = Path.GetFileName(model.File.FileName ?? string.Empty);
+                var extension = Path.GetExtension(rawFileName).TrimStart('.');
                 if (!AllowedExtensions.Contains(extension))
                 {
-                    throw new ArgumentException("Attached file's extention is not supported");
+                    throw new ArgumentException("Attached file's extension is not supported");
                 }
-                fileNameWithPath = $"files/{Guid.NewGuid()}-{model.File.FileName}";
-                using (var fs = new FileStream(Path.Combine(_environment.WebRootPath, fileNameWithPath), FileMode.Create))
+
+                fileNameWithPath = $"files/{Guid.NewGuid()}-{rawFileName}";
+
+                var webRoot = _environment?.WebRootPath;
+                if (string.IsNullOrEmpty(webRoot))
                 {
-                    await model.File.CopyToAsync(fs);
+                    webRoot = Directory.GetCurrentDirectory();
                 }
+
+                var destPath = Path.Combine(webRoot, fileNameWithPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(destPath) ?? webRoot);
+
+                using var fs = new FileStream(destPath, FileMode.Create);
+                await model.File.CopyToAsync(fs);
             }
 
             var newMenuItem = new MenuItem
@@ -54,25 +72,29 @@ namespace Mockups.Services.MenuItems
                 Description = model.Description,
                 Category = model.Category,
                 IsVegan = model.IsVegan,
-                PhotoPath = fileNameWithPath
+                PhotoPath = fileNameWithPath,
             };
 
             await _menuItemRepository.AddItem(newMenuItem);
         }
 
-        public async Task<List<MenuItemViewModel>> GetAllMenuItems(bool? isVegan, MenuItemCategory[]? category)
+        public async Task<List<MenuItemViewModel>> GetAllMenuItems(
+            bool? isVegan,
+            MenuItemCategory[]? category
+        )
         {
             var itemVMs = new List<MenuItemViewModel>();
 
             var items = new List<MenuItem>();
 
-            if (isVegan != null && category.Any())
+            var hasCategory = category != null && category.Any();
+            if (isVegan != null && hasCategory)
             {
                 items = await _menuItemRepository.GetAllMenuItems((bool)isVegan, category);
             }
-            else if (category.Any())
+            else if (hasCategory)
             {
-                items = await _menuItemRepository.GetAllMenuItems(category);
+                items = await _menuItemRepository.GetAllMenuItems(category!);
             }
             else if (isVegan != null)
             {
@@ -84,16 +106,18 @@ namespace Mockups.Services.MenuItems
             }
             foreach (var item in items)
             {
-                itemVMs.Add(new MenuItemViewModel
-                {
-                    Id = item.Id,
-                    Name = item.Name,
-                    Description = item.Description,
-                    Price = item.Price,
-                    Category = item.Category,
-                    IsVegan = item.IsVegan,
-                    PhotoPath = item.PhotoPath
-                });
+                itemVMs.Add(
+                    new MenuItemViewModel
+                    {
+                        Id = item.Id,
+                        Name = item.Name,
+                        Description = item.Description,
+                        Price = item.Price,
+                        Category = item.Category,
+                        IsVegan = item.IsVegan,
+                        PhotoPath = item.PhotoPath,
+                    }
+                );
             }
 
             return itemVMs;
@@ -101,7 +125,8 @@ namespace Mockups.Services.MenuItems
 
         public async Task<bool?> DeleteMenuItem(string id)
         {
-            var guid = Guid.Parse(id);
+            if (!Guid.TryParse(id, out var guid))
+                return null;
 
             var item = await _menuItemRepository.GetItemById(guid);
 
@@ -117,7 +142,8 @@ namespace Mockups.Services.MenuItems
 
         public async Task<MenuItemViewModel?> GetItemModelById(string id)
         {
-            var guid = Guid.Parse(id);
+            if (!Guid.TryParse(id, out var guid))
+                return null;
 
             var item = await _menuItemRepository.GetItemById(guid);
 
@@ -134,7 +160,7 @@ namespace Mockups.Services.MenuItems
                 Price = item.Price,
                 Category = item.Category,
                 IsVegan = item.IsVegan,
-                PhotoPath = item.PhotoPath
+                PhotoPath = item.PhotoPath,
             };
         }
 
@@ -145,7 +171,8 @@ namespace Mockups.Services.MenuItems
 
         public async Task<AddToCartViewModel> GetAddToCartModel(string itemId)
         {
-            var itemGuid = Guid.Parse(itemId);
+            if (!Guid.TryParse(itemId, out var itemGuid))
+                throw new ArgumentException("Invalid item id format", nameof(itemId));
 
             var item = await _menuItemRepository.GetItemById(itemGuid);
 
@@ -164,7 +191,7 @@ namespace Mockups.Services.MenuItems
                     Price = item.Price,
                     Category = item.Category,
                     IsVegan = item.IsVegan,
-                    PhotoPath = item.PhotoPath
+                    PhotoPath = item.PhotoPath,
                 },
             };
         }
